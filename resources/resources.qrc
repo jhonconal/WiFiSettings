@@ -1,0 +1,16 @@
+<RCC>
+    <qresource prefix="/icons">
+        <file alias="wifi_icon">icons/wifi_icon.svg</file>
+        <file alias="info">icons/info.svg</file>
+        <file alias="lock">icons/lock.svg</file>
+        <file alias="checkmark">icons/checkmark.svg</file>
+        <file alias="wifi_0">icons/wifi_0.svg</file>
+        <file alias="wifi_1">icons/wifi_1.svg</file>
+        <file alias="wifi_2">icons/wifi_2.svg</file>
+        <file alias="wifi_3">icons/wifi_3.svg</file>
+    </qresource>
+    <qresource prefix="/translations">
+        <file alias="wifi_en.qm">translations/wifi_en.qm</file>
+        <file alias="wifi_zh.qm">translations/wifi_zh.qm</file>
+    </qresource>
+</RCC>
