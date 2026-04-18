@@ -28,7 +28,7 @@
         <translation>断开连接</translation>
     </message>
     <message>
-        <source>Do you want to disconnect from &quot;%1&quot;?</source>
+        <source>Disconnect from &quot;%1&quot;?</source>
         <translation>是否要断开与"%1"的连接？</translation>
     </message>
     <message>

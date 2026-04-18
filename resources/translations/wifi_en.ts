@@ -28,8 +28,8 @@
         <translation>Disconnect</translation>
     </message>
     <message>
-        <source>Do you want to disconnect from &quot;%1&quot;?</source>
-        <translation>Do you want to disconnect from &quot;%1&quot;?</translation>
+        <source>Disconnect from &quot;%1&quot;?</source>
+        <translation>Disconnect from &quot;%1&quot;?</translation>
     </message>
     <message>
         <source>WiFi Error</source>

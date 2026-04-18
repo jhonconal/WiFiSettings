@@ -77,7 +77,8 @@ MainWindow::~MainWindow()
 
 void MainWindow::setupUi()
 {
-    setFixedSize(420, 720);
+    //setFixedSize(460, 800);
+    setMinimumSize(420, 840);
     setWindowTitle(tr("Wi-Fi Settings"));
 
     QVBoxLayout *outerLayout = new QVBoxLayout(this);
@@ -242,14 +243,16 @@ void MainWindow::onNetworksUpdated(const QList<WifiNetwork> &networks)
     }
 }
 
-void MainWindow::onConnectRequested(const WifiNetwork &network)
+void MainWindow::onConnectRequested(const WifiNetwork &networkRef)
 {
+    WifiNetwork network = networkRef;
+
     if (network.isConnected()) {
         // Already connected — offer to disconnect
         QMessageBox::StandardButton reply = QMessageBox::question(
             this,
             tr("Disconnect"),
-            tr("Do you want to disconnect from \"%1\"?").arg(network.ssid()),
+            tr("Disconnect from \"%1\"?").arg(network.ssid()),
             QMessageBox::Yes | QMessageBox::No
         );
         if (reply == QMessageBox::Yes) {

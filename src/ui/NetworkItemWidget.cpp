@@ -34,12 +34,18 @@ void NetworkItemWidget::setupUi()
 
     // SSID label
     m_ssidLabel = new QLabel(this);
-    m_ssidLabel->setStyleSheet("font-size: 16px; color: #1c1c1e;");
+    QFont f = m_ssidLabel->font();
+    f.setPixelSize(16);
+    m_ssidLabel->setFont(f);
+    QPalette pal = m_ssidLabel->palette();
+    pal.setColor(QPalette::WindowText, QColor(28, 28, 30));
+    m_ssidLabel->setPalette(pal);
+    m_ssidLabel->setAlignment(Qt::AlignVCenter | Qt::AlignLeft);
     layout->addWidget(m_ssidLabel, 1);
 
     // Lock icon
     m_lockLabel = new QLabel(this);
-    m_lockLabel->setFixedWidth(20);
+    m_lockLabel->setFixedWidth(24);
     m_lockLabel->setAlignment(Qt::AlignCenter);
     layout->addWidget(m_lockLabel);
 
@@ -51,15 +57,15 @@ void NetworkItemWidget::setupUi()
 
     // Info button
     m_infoButton = new QPushButton(this);
-    m_infoButton->setFixedSize(28, 28);
+    m_infoButton->setFixedSize(24, 24);
     m_infoButton->setCursor(Qt::PointingHandCursor);
     m_infoButton->setStyleSheet(
         "QPushButton {"
         "  border: 2px solid #007AFF;"
-        "  border-radius: 14px;"
+        "  border-radius: 12px;"
         "  background: transparent;"
         "  color: #007AFF;"
-        "  font-size: 14px;"
+        "  font-size: 12px;"
         "  font-weight: bold;"
         "  padding: 0px;"
         "}"
@@ -98,7 +104,7 @@ void NetworkItemWidget::updateDisplay()
 
     // Lock (SVG icon)
     if (m_network.isSecured()) {
-        QPixmap lockPix = loadSvgIcon(":/icons/lock", QSize(16, 16));
+        QPixmap lockPix = loadSvgIcon(":/icons/lock", QSize(20, 20));
         m_lockLabel->setPixmap(lockPix);
     } else {
         m_lockLabel->setPixmap(QPixmap());

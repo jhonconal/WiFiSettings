@@ -5,6 +5,8 @@
 #include <QTextStream>
 #include <QRegularExpression>
 #include <QDebug>
+#include <QEventLoop>
+#include <QTimer>
 
 
 WifiBackend::WifiBackend(QObject *parent)
@@ -30,7 +32,7 @@ QString WifiBackend::detectInterface() const
     }
 
     // Fallback: try common names
-    QStringList common = {"wlan0", "wlp2s0", "wlp3s0", "wifi0"};
+    QStringList common = {"wlan0", "wlp2s0", "wlp3s0", "wifi0","wlxe84e066dc4bb"};
     for (const QString &name : common) {
         if (QFile::exists(QString("/sys/class/net/%1").arg(name))) {
             return name;
@@ -42,16 +44,35 @@ QString WifiBackend::detectInterface() const
 
 QString WifiBackend::executeCommand(const QString &command, const QStringList &args, int timeoutMs) const
 {
+    QString cmd = command;
+    QStringList actualArgs = args;
+
     QProcess process;
-    process.start(command, args);
-    if (!process.waitForFinished(timeoutMs)) {
-        qWarning() << "Command timed out:" << command << args;
+    process.start(cmd, actualArgs);
+    
+    // Instead of blocking with process.waitForFinished, use a nested event loop
+    // so the application UI remains responsive and doesn't freeze.
+    QEventLoop loop;
+    QTimer timer;
+    timer.setInterval(timeoutMs);
+    timer.setSingleShot(true);
+    
+    connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+    connect(&process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), &loop, &QEventLoop::quit);
+    
+    timer.start();
+    loop.exec();
+
+    if (process.state() == QProcess::Running) {
+        qWarning() << "Command timed out:" << cmd << actualArgs;
+        process.kill();
+        process.waitForFinished(1000);
         return QString();
     }
 
     if (process.exitCode() != 0) {
         QString errOutput = process.readAllStandardError();
-        qWarning() << "Command failed:" << command << args << "Error:" << errOutput;
+        qWarning() << "Command failed:" << cmd << actualArgs << "Error:" << errOutput;
     }
 
     return QString::fromUtf8(process.readAllStandardOutput());
@@ -59,13 +80,82 @@ QString WifiBackend::executeCommand(const QString &command, const QStringList &a
 
 QList<WifiNetwork> WifiBackend::scanNetworks(const QString &interface)
 {
-    // Trigger scan
-    QString output = executeCommand("sudo", {"iwlist", interface, "scan"}, 15000);
-    if (output.isEmpty()) {
-        // Try without sudo
-        output = executeCommand("iwlist", {interface, "scan"}, 15000);
+    // Try to request a fresh scan from NetworkManager. We don't worry about failures 
+    // here because if it fails (e.g. scanning too frequently), it's fine to use cached list.
+    executeCommand("nmcli", {"dev", "wifi", "rescan", "ifname", interface}, 5000);
+
+    // Get the parsed list from NetworkManager
+    QString nmOutput = executeCommand("nmcli", {"-t", "-f", "IN-USE,SSID,BSSID,SIGNAL,FREQ,SECURITY", "dev", "wifi", "list", "ifname", interface}, 10000);
+    
+    if (!nmOutput.isEmpty() && !nmOutput.contains("Error:", Qt::CaseInsensitive)) {
+        return parseNmcliOutput(nmOutput);
     }
+
+    // Fallback to iwlist if nmcli is not available
+    QString output = executeCommand("iwlist", {interface, "scan"}, 15000);
     return parseIwlistOutput(output);
+}
+
+QList<WifiNetwork> WifiBackend::parseNmcliOutput(const QString &output)
+{
+    QList<WifiNetwork> networks;
+    QStringList lines = output.split('\n', Qt::SkipEmptyParts);
+    
+    for (const QString &line : lines) {
+        QStringList parts;
+        QString current;
+        // nmcli escapes colons with '\:' in terse mode
+        for (int i = 0; i < line.length(); ++i) {
+            if (line[i] == '\\' && i + 1 < line.length() && line[i+1] == ':') {
+                current.append(':');
+                i++;
+            } else if (line[i] == ':') {
+                parts.append(current);
+                current.clear();
+            } else {
+                current.append(line[i]);
+            }
+        }
+        parts.append(current);
+        
+        if (parts.size() < 6) continue;
+        
+        WifiNetwork net;
+        net.setSsid(parts[1]);
+        if (net.ssid().isEmpty() || net.ssid() == "--") continue;
+        
+        net.setBssid(parts[2]);
+        
+        int percent = parts[3].toInt();
+        int dbm = (percent / 2) - 100;
+        net.setSignalDbm(dbm);
+        
+        net.setFrequency(parts[4].toDouble() / 1000.0);
+        
+        QString sec = parts[5];
+        if (sec.isEmpty() || sec == "--") {
+            net.setSecurity("Open");
+        } else {
+            net.setSecurity(sec);
+        }
+        
+        // De-duplicate: keep strongest signal
+        bool found = false;
+        for (int j = 0; j < networks.size(); ++j) {
+            if (networks[j].ssid() == net.ssid()) {
+                if (net.signalDbm() > networks[j].signalDbm()) {
+                    networks[j] = net;
+                }
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            networks.append(net);
+        }
+    }
+    
+    return networks;
 }
 
 QList<WifiNetwork> WifiBackend::parseIwlistOutput(const QString &output)
@@ -201,9 +291,6 @@ QList<WifiNetwork> WifiBackend::parseIwlistOutput(const QString &output)
 QMap<QString, QString> WifiBackend::getConnectionStatus(const QString &interface)
 {
     QString output = executeCommand("wpa_cli", {"-i", interface, "status"});
-    if (output.isEmpty()) {
-        output = executeCommand("sudo", {"wpa_cli", "-i", interface, "status"});
-    }
     return parseWpaStatus(output);
 }
 
@@ -229,9 +316,6 @@ bool WifiBackend::connectToNetwork(const QString &interface, const QString &ssid
 {
     // Step 1: Add a new network
     QString addResult = executeCommand("wpa_cli", {"-i", interface, "add_network"});
-    if (addResult.isEmpty()) {
-        addResult = executeCommand("sudo", {"wpa_cli", "-i", interface, "add_network"});
-    }
 
     QString networkId = addResult.trimmed();
     // The last line should be the network ID (a number)
@@ -267,7 +351,7 @@ bool WifiBackend::connectToNetwork(const QString &interface, const QString &ssid
     executeCommand("wpa_cli", {"-i", interface, "save_config"});
 
     // Step 6: Request DHCP
-    executeCommand("sudo", {"dhclient", interface}, 15000);
+    executeCommand("dhclient", {interface}, 15000);
 
     return true;
 }
@@ -275,16 +359,13 @@ bool WifiBackend::connectToNetwork(const QString &interface, const QString &ssid
 bool WifiBackend::disconnectNetwork(const QString &interface)
 {
     QString result = executeCommand("wpa_cli", {"-i", interface, "disconnect"});
-    if (result.isEmpty()) {
-        result = executeCommand("sudo", {"wpa_cli", "-i", interface, "disconnect"});
-    }
     return result.contains("OK");
 }
 
 bool WifiBackend::setInterfaceUp(const QString &interface, bool up)
 {
     QString action = up ? "up" : "down";
-    QString result = executeCommand("sudo", {"ip", "link", "set", interface, action});
+    executeCommand("ip", {"link", "set", interface, action});
     return true;  // ip link doesn't always produce output on success
 }
 

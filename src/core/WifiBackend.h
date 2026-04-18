@@ -89,6 +89,11 @@ private:
     QList<WifiNetwork> parseIwlistOutput(const QString &output);
 
     /**
+     * @brief Parse nmcli terse scan output into a list of WifiNetwork objects.
+     */
+    QList<WifiNetwork> parseNmcliOutput(const QString &output);
+
+    /**
      * @brief Parse wpa_cli status output into a key-value map.
      */
     QMap<QString, QString> parseWpaStatus(const QString &output);

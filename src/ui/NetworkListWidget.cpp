@@ -136,11 +136,11 @@ void NetworkListWidget::rebuildList(const QList<WifiNetwork> &networks)
 
         // Other networks card background
         QWidget *cardWidget = new QWidget(m_contentWidget);
-        cardWidget->setStyleSheet(
-            "background-color: white;"
-            "border-radius: 10px;"
-            "margin: 0px 16px;"
-        );
+        // cardWidget->setStyleSheet(
+        //     "background-color: white;"
+        //     "border-radius: 10px;"
+        //     "margin: 0px 16px;"
+        // );
         QVBoxLayout *cardLayout = new QVBoxLayout(cardWidget);
         cardLayout->setContentsMargins(0, 4, 0, 4);
         cardLayout->setSpacing(0);
