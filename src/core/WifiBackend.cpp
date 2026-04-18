@@ -85,7 +85,7 @@ QList<WifiNetwork> WifiBackend::scanNetworks(const QString &interface)
     executeCommand("nmcli", {"dev", "wifi", "rescan", "ifname", interface}, 5000);
 
     // Get the parsed list from NetworkManager
-    QString nmOutput = executeCommand("nmcli", {"-t", "-f", "IN-USE,SSID,BSSID,SIGNAL,FREQ,SECURITY", "dev", "wifi", "list", "ifname", interface}, 10000);
+    QString nmOutput = executeCommand("nmcli", {"-t", "-f", "IN-USE,SSID,BSSID,SIGNAL,FREQ,CHAN,SECURITY", "dev", "wifi", "list", "ifname", interface}, 10000);
     
     if (!nmOutput.isEmpty() && !nmOutput.contains("Error:", Qt::CaseInsensitive)) {
         return parseNmcliOutput(nmOutput);
@@ -118,7 +118,7 @@ QList<WifiNetwork> WifiBackend::parseNmcliOutput(const QString &output)
         }
         parts.append(current);
         
-        if (parts.size() < 6) continue;
+        if (parts.size() < 7) continue;
         
         WifiNetwork net;
         net.setSsid(parts[1]);
@@ -130,9 +130,13 @@ QList<WifiNetwork> WifiBackend::parseNmcliOutput(const QString &output)
         int dbm = (percent / 2) - 100;
         net.setSignalDbm(dbm);
         
-        net.setFrequency(parts[4].toDouble() / 1000.0);
+        QString freqStr = parts[4];
+        freqStr.remove(" MHz", Qt::CaseInsensitive); // nmcli outputs '2412 MHz'
+        net.setFrequency(freqStr.trimmed().toDouble() / 1000.0);
+
+        net.setChannel(parts[5].toInt());
         
-        QString sec = parts[5];
+        QString sec = parts[6];
         if (sec.isEmpty() || sec == "--") {
             net.setSecurity("Open");
         } else {
