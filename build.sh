@@ -3,6 +3,22 @@
 
 set -e
 
+# 构建架构参数 (默认: X86)
+ARCH=${1:-X86}
+
+echo "Building for architecture: $ARCH"
+
+if [ "$ARCH" = "ARM" ]; then
+    # ARM 构建 - source Yocto 环境
+    echo "ARM build: Sourcing Yocto environment..."
+    source /opt/fsl-imx-xwayland/5.10-gatesgarth/environment-setup-cortexa53-crypto-poky-linux
+    CMAKE_ARGS="-DCMAKE_TOOLCHAIN_FILE=../../tools/toolchain.cmake"
+else
+    # X86 构建 (默认)
+    echo "X86 build: Native compilation"
+    CMAKE_ARGS=""
+fi
+
 # ==========================================
 # 1. Check Dependencies
 # ==========================================
@@ -27,8 +43,8 @@ QT_SELECT=qt5 lrelease resources/translations/wifi_en.ts resources/translations/
 # 3. Setup Build Directory
 # ==========================================
 echo "[3/4] Setting up build directory..."
-mkdir -p build
-cd build
+[ -d build ] && rm -rf build
+mkdir -p build && cd build
 
 # ==========================================
 # 4. Compile Project

@@ -7,6 +7,7 @@
 #include <QDebug>
 #include <QEventLoop>
 #include <QTimer>
+#include <QStandardPaths>
 
 
 WifiBackend::WifiBackend(QObject *parent)
@@ -48,7 +49,6 @@ QString WifiBackend::executeCommand(const QString &command, const QStringList &a
     QStringList actualArgs = args;
 
     QProcess process;
-    process.start(cmd, actualArgs);
     
     // Instead of blocking with process.waitForFinished, use a nested event loop
     // so the application UI remains responsive and doesn't freeze.
@@ -59,7 +59,9 @@ QString WifiBackend::executeCommand(const QString &command, const QStringList &a
     
     connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
     connect(&process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), &loop, &QEventLoop::quit);
+    connect(&process, &QProcess::errorOccurred, &loop, &QEventLoop::quit);
     
+    process.start(cmd, actualArgs);
     timer.start();
     loop.exec();
 
@@ -80,15 +82,18 @@ QString WifiBackend::executeCommand(const QString &command, const QStringList &a
 
 QList<WifiNetwork> WifiBackend::scanNetworks(const QString &interface)
 {
-    // Try to request a fresh scan from NetworkManager. We don't worry about failures 
-    // here because if it fails (e.g. scanning too frequently), it's fine to use cached list.
-    executeCommand("nmcli", {"dev", "wifi", "rescan", "ifname", interface}, 5000);
+    bool hasNmcli = !QStandardPaths::findExecutable("nmcli").isEmpty();
+    if (hasNmcli) {
+        // Try to request a fresh scan from NetworkManager. We don't worry about failures 
+        // here because if it fails (e.g. scanning too frequently), it's fine to use cached list.
+        executeCommand("nmcli", {"dev", "wifi", "rescan", "ifname", interface}, 5000);
 
-    // Get the parsed list from NetworkManager
-    QString nmOutput = executeCommand("nmcli", {"-t", "-f", "IN-USE,SSID,BSSID,SIGNAL,FREQ,CHAN,SECURITY", "dev", "wifi", "list", "ifname", interface}, 10000);
-    
-    if (!nmOutput.isEmpty() && !nmOutput.contains("Error:", Qt::CaseInsensitive)) {
-        return parseNmcliOutput(nmOutput);
+        // Get the parsed list from NetworkManager
+        QString nmOutput = executeCommand("nmcli", {"-t", "-f", "IN-USE,SSID,BSSID,SIGNAL,FREQ,CHAN,SECURITY", "dev", "wifi", "list", "ifname", interface}, 10000);
+        
+        if (!nmOutput.isEmpty() && !nmOutput.contains("Error:", Qt::CaseInsensitive)) {
+            return parseNmcliOutput(nmOutput);
+        }
     }
 
     // Fallback to iwlist if nmcli is not available
@@ -99,7 +104,7 @@ QList<WifiNetwork> WifiBackend::scanNetworks(const QString &interface)
 QList<WifiNetwork> WifiBackend::parseNmcliOutput(const QString &output)
 {
     QList<WifiNetwork> networks;
-    QStringList lines = output.split('\n', Qt::SkipEmptyParts);
+    QStringList lines = output.split('\n', QString::SkipEmptyParts);
     
     for (const QString &line : lines) {
         QStringList parts;
@@ -303,7 +308,7 @@ QMap<QString, QString> WifiBackend::parseWpaStatus(const QString &output)
     QMap<QString, QString> status;
     if (output.isEmpty()) return status;
 
-    QStringList lines = output.split('\n', Qt::SkipEmptyParts);
+    QStringList lines = output.split('\n', QString::SkipEmptyParts);
     for (const QString &line : lines) {
         int eqPos = line.indexOf('=');
         if (eqPos > 0) {
@@ -323,7 +328,7 @@ bool WifiBackend::connectToNetwork(const QString &interface, const QString &ssid
 
     QString networkId = addResult.trimmed();
     // The last line should be the network ID (a number)
-    QStringList lines = networkId.split('\n', Qt::SkipEmptyParts);
+    QStringList lines = networkId.split('\n', QString::SkipEmptyParts);
     if (lines.isEmpty()) return false;
     networkId = lines.last().trimmed();
 
@@ -355,7 +360,24 @@ bool WifiBackend::connectToNetwork(const QString &interface, const QString &ssid
     executeCommand("wpa_cli", {"-i", interface, "save_config"});
 
     // Step 6: Request DHCP
-    executeCommand("dhclient", {interface}, 15000);
+    QString dhcpCmd;
+    if (!QStandardPaths::findExecutable("dhclient").isEmpty()) {
+        dhcpCmd = "dhclient";
+    } else if (!QStandardPaths::findExecutable("udhcpc").isEmpty()) {
+        dhcpCmd = "udhcpc";
+    } else if (!QStandardPaths::findExecutable("dhcpcd").isEmpty()) {
+        dhcpCmd = "dhcpcd";
+    }
+
+    if (dhcpCmd == "dhclient") {
+        executeCommand("dhclient", {interface}, 15000);
+    } else if (dhcpCmd == "udhcpc") {
+        executeCommand("udhcpc", {"-i", interface, "-n"}, 15000);
+    } else if (dhcpCmd == "dhcpcd") {
+        executeCommand("dhcpcd", {interface}, 15000);
+    } else {
+        qWarning() << "No supported DHCP client (dhclient, udhcpc, dhcpcd) found in PATH.";
+    }
 
     return true;
 }
